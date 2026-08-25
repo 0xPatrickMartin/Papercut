@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "Papercut"
+version = "0.1.0"
+description = "Authorized PDF password-strength auditing CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Papercut contributors" }]
+dependencies = [
+  "pypdf>=5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+papercut = "papercut.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/papercut"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
