@@ -12,6 +12,12 @@ from papercut.models import AuditResult
 from papercut.pdf import PdfInspectionError
 
 
+@pytest.fixture(autouse=True)
+def _force_python_backend_for_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Keep CLI smoke tests on the deterministic Python path.
+    monkeypatch.setattr("papercut.attacks.hashcat_available", lambda: False)
+
+
 def make_encrypted_pdf(path: Path, password: str = "client-secret") -> Path:
     writer = PdfWriter()
     writer.add_blank_page(width=72, height=72)
@@ -26,7 +32,7 @@ def test_wordlist_recovers_password_and_stops(tmp_path: Path) -> None:
     wordlist = tmp_path / "passwords.txt"
     wordlist.write_text("incorrect\nclient-secret\nnever-tested\n", encoding="utf-8")
 
-    result = run_wordlist(pdf, wordlist)
+    result = run_wordlist(pdf, wordlist, prefer_hashcat=False)
 
     assert isinstance(result, AuditResult)
     assert result.found is True
@@ -34,6 +40,7 @@ def test_wordlist_recovers_password_and_stops(tmp_path: Path) -> None:
     assert result.attempted == 2
     assert result.elapsed >= 0
     assert result.rate >= 0
+    assert result.backend == "python"
 
 
 def test_wordlist_exhaustion_returns_failure(tmp_path: Path) -> None:
@@ -41,7 +48,7 @@ def test_wordlist_exhaustion_returns_failure(tmp_path: Path) -> None:
     wordlist = tmp_path / "passwords.txt"
     wordlist.write_text("first\nsecond\nthird\n", encoding="utf-8")
 
-    result = run_wordlist(pdf, wordlist)
+    result = run_wordlist(pdf, wordlist, prefer_hashcat=False)
 
     assert result.found is False
     assert result.password is None
@@ -54,7 +61,7 @@ def test_wordlist_rejects_malformed_utf8(tmp_path: Path) -> None:
     wordlist.write_bytes(b"password\n\xff")
 
     with pytest.raises(CandidateSourceError, match="could not read wordlist"):
-        run_wordlist(pdf, wordlist)
+        run_wordlist(pdf, wordlist, prefer_hashcat=False)
 
 
 def test_empty_wordlist_returns_zero_attempts(tmp_path: Path) -> None:
@@ -62,7 +69,7 @@ def test_empty_wordlist_returns_zero_attempts(tmp_path: Path) -> None:
     wordlist = tmp_path / "passwords.txt"
     wordlist.write_text("", encoding="utf-8")
 
-    result = run_wordlist(pdf, wordlist)
+    result = run_wordlist(pdf, wordlist, prefer_hashcat=False)
 
     assert result.found is False
     assert result.attempted == 0
@@ -74,15 +81,14 @@ def test_wordlist_reports_missing_pdf(tmp_path: Path) -> None:
     wordlist.write_text("password\n", encoding="utf-8")
 
     with pytest.raises(PdfInspectionError, match="could not read"):
-        run_wordlist(tmp_path / "missing.pdf", wordlist)
+        run_wordlist(tmp_path / "missing.pdf", wordlist, prefer_hashcat=False)
 
 
 def test_wordlist_reports_missing_wordlist(tmp_path: Path) -> None:
     pdf = make_encrypted_pdf(tmp_path / "protected.pdf")
 
     with pytest.raises(CandidateSourceError, match="could not read wordlist"):
-        run_wordlist(pdf, tmp_path / "missing.txt")
-
+        run_wordlist(pdf, tmp_path / "missing.txt", prefer_hashcat=False)
 
 def test_wordlist_cli_prints_success(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     pdf = make_encrypted_pdf(tmp_path / "protected.pdf")
@@ -94,6 +100,7 @@ def test_wordlist_cli_prints_success(tmp_path: Path, capsys: pytest.CaptureFixtu
     output = capsys.readouterr()
     assert exit_code == 0
     assert "Papercut wordlist: SUCCESS" in output.out
+    assert "Engine: Python" in output.out or "Engine: Hashcat" in output.out
     assert "Password: client-secret" in output.out
     assert "Attempted: 2" in output.out
 
@@ -128,7 +135,7 @@ def test_wordlist_recovers_password_through_mutation(tmp_path: Path) -> None:
     wordlist = tmp_path / "passwords.txt"
     wordlist.write_text("password\n", encoding="utf-8")
 
-    result = run_wordlist(pdf, wordlist, mutate=True)
+    result = run_wordlist(pdf, wordlist, mutate=True, prefer_hashcat=False)
 
     assert result.found is True
     assert result.password == "password1"
@@ -141,12 +148,11 @@ def test_wordlist_does_not_mutate_by_default(tmp_path: Path) -> None:
     wordlist = tmp_path / "passwords.txt"
     wordlist.write_text("password\n", encoding="utf-8")
 
-    result = run_wordlist(pdf, wordlist)
+    result = run_wordlist(pdf, wordlist, prefer_hashcat=False)
 
     assert result.found is False
     assert result.attempted == 1
     assert result.attack == "wordlist"
-
 
 def test_wordlist_cli_mutate_option_recovers_password(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]

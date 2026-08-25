@@ -42,6 +42,7 @@ class AuditResult:
     elapsed: float
     rate: float
     resumed_from: int = 0
+    backend: str = "python"
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)

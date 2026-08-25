@@ -43,7 +43,9 @@ def _inspect(args: argparse.Namespace) -> int:
 def _print_audit_result(result: AuditResult) -> None:
     status = "SUCCESS" if result.found else "NOT FOUND"
     attack = result.attack.split("+", maxsplit=1)[0]
+    engine = "Hashcat" if result.backend == "hashcat" else "Python"
     print(f"Papercut {attack}: {status}")
+    print(f"Engine: {engine}")
     if result.password is not None:
         print(f"Password: {result.password}")
     print(f"Attempted: {result.attempted}")

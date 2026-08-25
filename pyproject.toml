@@ -26,5 +26,8 @@ papercut = "papercut.cli:main"
 packages = ["src/papercut"]
 
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -m 'not integration'"
 testpaths = ["tests"]
+markers = [
+  "integration: optional local Hashcat integration (not required for CI)",
+]

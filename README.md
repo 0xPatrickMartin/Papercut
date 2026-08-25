@@ -1,8 +1,13 @@
 # Papercut
 
-Papercut is a Python CLI for assessing the password protection used by PDF
-documents. It can inspect PDF encryption settings and test passwords from a
-wordlist.
+Papercut is a Python CLI for authorized PDF password-strength auditing. It
+inspects encryption settings and tests passwords with wordlists, bounded
+mutations, masks, and bounded brute force.
+
+When [Hashcat](https://hashcat.net/) is installed and available on `PATH`,
+Papercut uses it automatically for supported encrypted PDFs. If Hashcat is
+missing or cannot run, Papercut falls back to its built-in Python verifier.
+Operators do not select a backend.
 
 ## Authorized use only
 
@@ -25,6 +30,12 @@ python -m pip install -e ".[dev]"
 pytest
 ```
 
+Optional high-performance path:
+
+* Install Hashcat and ensure `hashcat` is on your `PATH`.
+* Optionally install `pdf2john` / `pdf2john.py` for hash extraction. If it is
+  absent, Papercut formats a John/Hashcat-compatible `$pdf$` hash with `pypdf`.
+
 ## Usage
 
 Inspect a PDF:
@@ -33,36 +44,20 @@ Inspect a PDF:
 papercut inspect path/to/document.pdf
 ```
 
-Test an encrypted PDF with a UTF-8 wordlist containing one candidate per line:
+Wordlist attack:
 
 ```console
 papercut wordlist path/to/document.pdf path/to/passwords.txt
-```
-
-Papercut reads the wordlist incrementally, stops at the first matching
-password, and reports attempts, elapsed time, and attempts per second. A
-successful match exits with status `0`, exhaustion with `1`, and an input error
-with `2`.
-
-Use `--mutate` to test a small, deterministic set of common capitalization,
-numeric suffix, year suffix, and character-substitution variants for each
-wordlist entry:
-
-```console
 papercut wordlist path/to/document.pdf path/to/passwords.txt --mutate
 ```
 
-Generate candidates from a mask:
+Mask attack (`?l` lowercase, `?u` uppercase, `?d` digits, `?s` = `!@#$%^&*`):
 
 ```console
 papercut mask protected.pdf 'Summer?d?d?d?d'
 ```
 
-Mask tokens are `?l` for lowercase letters, `?u` for uppercase letters, `?d`
-for digits, and `?s` for the common symbols `!@#$%^&*`. Other `?` tokens are
-rejected.
-
-Run a bounded brute-force search:
+Bounded brute force:
 
 ```console
 papercut bruteforce protected.pdf \
@@ -75,25 +70,30 @@ Character-set choices are `digits`, `lowercase`, `uppercase`, `letters`,
 `alnum`, and `symbols`.
 
 Mask and brute-force attacks default to a safety limit of 1,000,000 candidates.
-Papercut refuses larger spaces unless the operator explicitly supplies a
-higher limit, for example `--max-candidates 2000000`. Progress is reported
-periodically with attempted candidates, elapsed time, rate, and an ETA for
-known-size searches.
+Raise it explicitly with `--max-candidates` when needed. Successful recovery
+exits `0`, exhaustion `1`, and input errors `2`. Attack output includes which
+engine handled the run (`Hashcat` or `Python`).
 
-Show command help:
+## Automatic engine selection
 
-```console
-papercut --help
-papercut inspect --help
-papercut wordlist --help
-papercut mask --help
-papercut bruteforce --help
-```
+1. If Hashcat is detected, Papercut extracts a `$pdf$` hash and runs Hashcat.
+2. If Hashcat is unavailable, fails to start, or returns a runtime error,
+   Papercut falls back to the Python candidate tester.
+3. Unsupported encryption (non-Standard handlers, certificate/public-key
+   SubFilters, or PDF revisions outside Hashcat modes 10400/10500/10600/10700)
+   is reported clearly.
 
 ## Proof-of-concept limitations
 
-Papercut currently runs sequentially and does not support multiprocessing,
-checkpoints, external cracking backends, configuration files, or plugins.
-Wordlist mutation rules are intentionally small and bounded. The built-in
-search modes are intended to demonstrate authorized password-strength audits,
-not high-performance cracking.
+* Sequential Python fallback only; no multiprocessing yet.
+* No backend flags, GPU tuning, distributed cracking, advanced Hashcat rules,
+  checkpoints, configuration files, or plugins.
+* Mutation rules remain a small deterministic set.
+* Local Hashcat still depends on a working Hashcat/OpenCL (or compatible)
+  install; the default test suite mocks Hashcat and does not require a GPU.
+
+Optional local Hashcat check:
+
+```console
+pytest -m integration
+```

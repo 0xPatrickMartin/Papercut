@@ -4,6 +4,13 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from time import perf_counter
 
+from .backends.hashcat import (
+    HashcatError,
+    hashcat_available,
+    run_bruteforce_hashcat,
+    run_mask_hashcat,
+    run_wordlist_hashcat,
+)
 from .candidates import (
     DEFAULT_SEARCH_LIMIT,
     bruteforce_candidate_count,
@@ -13,6 +20,7 @@ from .candidates import (
     mask_candidates,
     wordlist_candidates,
 )
+from .hash_extract import UnsupportedEncryptionError
 from .models import AuditResult, Progress
 from .pdf import inspect_pdf, verify_password
 
@@ -82,7 +90,12 @@ def run_attack(
         attempted=attempted,
         elapsed=final_progress.elapsed,
         rate=final_progress.rate,
+        backend="python",
     )
+
+
+def _prefer_hashcat() -> bool:
+    return hashcat_available()
 
 
 def run_wordlist(
@@ -94,7 +107,21 @@ def run_wordlist(
     progress_interval: float = 1.0,
     verifier: PasswordVerifier = verify_password,
     clock: Clock = perf_counter,
+    prefer_hashcat: bool | None = None,
 ) -> AuditResult:
+    use_hashcat = _prefer_hashcat() if prefer_hashcat is None else prefer_hashcat
+    if use_hashcat:
+        try:
+            return run_wordlist_hashcat(path, wordlist, mutate=mutate, clock=clock)
+        except UnsupportedEncryptionError:
+            # Certificate / unknown handlers cannot use Hashcat or useful PDF password tests.
+            raise AttackInputError(
+                "PDF encryption is not supported for Hashcat-backed auditing"
+            )
+        except HashcatError:
+            # Fall back to the built-in Python verifier path.
+            pass
+
     candidates = wordlist_candidates(wordlist)
     if mutate:
         candidates = expand_mutations(candidates)
@@ -118,7 +145,22 @@ def run_mask(
     progress_interval: float = 1.0,
     verifier: PasswordVerifier = verify_password,
     clock: Clock = perf_counter,
+    prefer_hashcat: bool | None = None,
 ) -> AuditResult:
+    use_hashcat = _prefer_hashcat() if prefer_hashcat is None else prefer_hashcat
+    if use_hashcat:
+        try:
+            return run_mask_hashcat(
+                path,
+                mask,
+                max_candidates=max_candidates,
+                clock=clock,
+            )
+        except UnsupportedEncryptionError as exc:
+            raise AttackInputError(str(exc)) from exc
+        except HashcatError:
+            pass
+
     total = mask_candidate_count(mask)
     candidates = mask_candidates(mask, max_candidates=max_candidates)
     return run_attack(
@@ -144,7 +186,24 @@ def run_bruteforce(
     progress_interval: float = 1.0,
     verifier: PasswordVerifier = verify_password,
     clock: Clock = perf_counter,
+    prefer_hashcat: bool | None = None,
 ) -> AuditResult:
+    use_hashcat = _prefer_hashcat() if prefer_hashcat is None else prefer_hashcat
+    if use_hashcat:
+        try:
+            return run_bruteforce_hashcat(
+                path,
+                charset,
+                min_length,
+                max_length,
+                max_candidates=max_candidates,
+                clock=clock,
+            )
+        except UnsupportedEncryptionError as exc:
+            raise AttackInputError(str(exc)) from exc
+        except HashcatError:
+            pass
+
     total = bruteforce_candidate_count(charset, min_length, max_length)
     candidates = bruteforce_candidates(
         charset,

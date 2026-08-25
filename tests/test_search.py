@@ -22,6 +22,11 @@ from papercut.candidates import (
 from papercut.cli import main
 
 
+@pytest.fixture(autouse=True)
+def _force_python_backend_for_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("papercut.attacks.hashcat_available", lambda: False)
+
+
 def make_encrypted_pdf(path: Path, password: str) -> Path:
     writer = PdfWriter()
     writer.add_blank_page(width=72, height=72)
@@ -42,11 +47,12 @@ def test_mask_generation_and_count() -> None:
 def test_mask_attack_recovers_password(tmp_path: Path) -> None:
     pdf = make_encrypted_pdf(tmp_path / "protected.pdf", "Summer01")
 
-    result = run_mask(pdf, "Summer?d?d")
+    result = run_mask(pdf, "Summer?d?d", prefer_hashcat=False)
 
     assert result.found is True
     assert result.password == "Summer01"
     assert result.attempted == 2
+    assert result.backend == "python"
 
 
 def test_bruteforce_generation_is_bounded_and_ordered() -> None:
@@ -63,11 +69,12 @@ def test_bruteforce_generation_is_bounded_and_ordered() -> None:
 def test_bruteforce_attack_recovers_password(tmp_path: Path) -> None:
     pdf = make_encrypted_pdf(tmp_path / "protected.pdf", "3")
 
-    result = run_bruteforce(pdf, "digits", 1, 1)
+    result = run_bruteforce(pdf, "digits", 1, 1, prefer_hashcat=False)
 
     assert result.found is True
     assert result.password == "3"
     assert result.attempted == 4
+    assert result.backend == "python"
 
 
 @pytest.mark.parametrize("mask", ["?", "?x", "prefix?"])
@@ -157,5 +164,7 @@ def test_mask_and_bruteforce_cli_commands(
 
     assert mask_exit == 0
     assert "Papercut mask: SUCCESS" in mask_output.out
+    assert "Engine: Python" in mask_output.out
     assert brute_exit == 0
     assert "Papercut bruteforce: SUCCESS" in brute_output.out
+    assert "Engine: Python" in brute_output.out
