@@ -4,16 +4,42 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from time import perf_counter
 
-from .candidates import expand_mutations, wordlist_candidates
-from .models import AuditResult
+from .candidates import (
+    DEFAULT_SEARCH_LIMIT,
+    bruteforce_candidate_count,
+    bruteforce_candidates,
+    expand_mutations,
+    mask_candidate_count,
+    mask_candidates,
+    wordlist_candidates,
+)
+from .models import AuditResult, Progress
 from .pdf import inspect_pdf, verify_password
 
 PasswordVerifier = Callable[[Path, str], bool]
 Clock = Callable[[], float]
+ProgressCallback = Callable[[Progress], None]
 
 
 class AttackInputError(RuntimeError):
     """Raised when the target is unsuitable for a password audit."""
+
+
+def calculate_progress(
+    attempted: int, total: int | None, started: float, now: float
+) -> Progress:
+    elapsed = max(0.0, now - started)
+    rate = attempted / elapsed if elapsed > 0 else 0.0
+    eta = None
+    if total is not None and rate > 0:
+        eta = max(0.0, total - attempted) / rate
+    return Progress(
+        attempted=attempted,
+        total=total,
+        elapsed=elapsed,
+        rate=rate,
+        eta=eta,
+    )
 
 
 def run_attack(
@@ -21,6 +47,9 @@ def run_attack(
     candidates: Iterable[str],
     *,
     attack: str,
+    total: int | None = None,
+    progress: ProgressCallback | None = None,
+    progress_interval: float = 1.0,
     verifier: PasswordVerifier = verify_password,
     clock: Clock = perf_counter,
 ) -> AuditResult:
@@ -31,23 +60,28 @@ def run_attack(
 
     attempted = 0
     started = clock()
+    last_report = started
     password: str | None = None
     for candidate in candidates:
         attempted += 1
         if verifier(path, candidate):
             password = candidate
             break
+        if progress is not None:
+            now = clock()
+            if now - last_report >= progress_interval:
+                progress(calculate_progress(attempted, total, started, now))
+                last_report = now
 
-    elapsed = max(0.0, clock() - started)
-    rate = attempted / elapsed if elapsed > 0 else 0.0
+    final_progress = calculate_progress(attempted, total, started, clock())
     return AuditResult(
         path=path,
         attack=attack,
         found=password is not None,
         password=password,
         attempted=attempted,
-        elapsed=elapsed,
-        rate=rate,
+        elapsed=final_progress.elapsed,
+        rate=final_progress.rate,
     )
 
 
@@ -56,6 +90,8 @@ def run_wordlist(
     wordlist: Path,
     *,
     mutate: bool = False,
+    progress: ProgressCallback | None = None,
+    progress_interval: float = 1.0,
     verifier: PasswordVerifier = verify_password,
     clock: Clock = perf_counter,
 ) -> AuditResult:
@@ -66,6 +102,63 @@ def run_wordlist(
         path,
         candidates,
         attack="wordlist+mutations" if mutate else "wordlist",
+        progress=progress,
+        progress_interval=progress_interval,
+        verifier=verifier,
+        clock=clock,
+    )
+
+
+def run_mask(
+    path: Path,
+    mask: str,
+    *,
+    max_candidates: int = DEFAULT_SEARCH_LIMIT,
+    progress: ProgressCallback | None = None,
+    progress_interval: float = 1.0,
+    verifier: PasswordVerifier = verify_password,
+    clock: Clock = perf_counter,
+) -> AuditResult:
+    total = mask_candidate_count(mask)
+    candidates = mask_candidates(mask, max_candidates=max_candidates)
+    return run_attack(
+        path,
+        candidates,
+        attack="mask",
+        total=total,
+        progress=progress,
+        progress_interval=progress_interval,
+        verifier=verifier,
+        clock=clock,
+    )
+
+
+def run_bruteforce(
+    path: Path,
+    charset: str,
+    min_length: int,
+    max_length: int,
+    *,
+    max_candidates: int = DEFAULT_SEARCH_LIMIT,
+    progress: ProgressCallback | None = None,
+    progress_interval: float = 1.0,
+    verifier: PasswordVerifier = verify_password,
+    clock: Clock = perf_counter,
+) -> AuditResult:
+    total = bruteforce_candidate_count(charset, min_length, max_length)
+    candidates = bruteforce_candidates(
+        charset,
+        min_length,
+        max_length,
+        max_candidates=max_candidates,
+    )
+    return run_attack(
+        path,
+        candidates,
+        attack="bruteforce",
+        total=total,
+        progress=progress,
+        progress_interval=progress_interval,
         verifier=verifier,
         clock=clock,
     )
