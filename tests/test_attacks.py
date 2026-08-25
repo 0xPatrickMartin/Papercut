@@ -121,3 +121,43 @@ def test_wordlist_cli_reports_input_error(
     output = capsys.readouterr()
     assert exit_code == 2
     assert "Papercut: error:" in output.err
+
+
+def test_wordlist_recovers_password_through_mutation(tmp_path: Path) -> None:
+    pdf = make_encrypted_pdf(tmp_path / "protected.pdf", "password1")
+    wordlist = tmp_path / "passwords.txt"
+    wordlist.write_text("password\n", encoding="utf-8")
+
+    result = run_wordlist(pdf, wordlist, mutate=True)
+
+    assert result.found is True
+    assert result.password == "password1"
+    assert result.attempted == 4
+    assert result.attack == "wordlist+mutations"
+
+
+def test_wordlist_does_not_mutate_by_default(tmp_path: Path) -> None:
+    pdf = make_encrypted_pdf(tmp_path / "protected.pdf", "password1")
+    wordlist = tmp_path / "passwords.txt"
+    wordlist.write_text("password\n", encoding="utf-8")
+
+    result = run_wordlist(pdf, wordlist)
+
+    assert result.found is False
+    assert result.attempted == 1
+    assert result.attack == "wordlist"
+
+
+def test_wordlist_cli_mutate_option_recovers_password(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pdf = make_encrypted_pdf(tmp_path / "protected.pdf", "password1")
+    wordlist = tmp_path / "passwords.txt"
+    wordlist.write_text("password\n", encoding="utf-8")
+
+    exit_code = main(["wordlist", str(pdf), str(wordlist), "--mutate"])
+
+    output = capsys.readouterr()
+    assert exit_code == 0
+    assert "Password: password1" in output.out
+    assert "Attempted: 4" in output.out

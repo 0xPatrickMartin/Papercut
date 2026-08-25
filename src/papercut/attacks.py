@@ -4,7 +4,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from time import perf_counter
 
-from .candidates import wordlist_candidates
+from .candidates import expand_mutations, wordlist_candidates
 from .models import AuditResult
 from .pdf import inspect_pdf, verify_password
 
@@ -55,13 +55,17 @@ def run_wordlist(
     path: Path,
     wordlist: Path,
     *,
+    mutate: bool = False,
     verifier: PasswordVerifier = verify_password,
     clock: Clock = perf_counter,
 ) -> AuditResult:
+    candidates = wordlist_candidates(wordlist)
+    if mutate:
+        candidates = expand_mutations(candidates)
     return run_attack(
         path,
-        wordlist_candidates(wordlist),
-        attack="wordlist",
+        candidates,
+        attack="wordlist+mutations" if mutate else "wordlist",
         verifier=verifier,
         clock=clock,
     )

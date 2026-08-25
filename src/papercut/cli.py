@@ -47,7 +47,7 @@ def _print_audit_result(result: AuditResult) -> None:
 
 def _wordlist(args: argparse.Namespace) -> int:
     try:
-        result = run_wordlist(args.pdf, args.wordlist)
+        result = run_wordlist(args.pdf, args.wordlist, mutate=args.mutate)
     except (AttackInputError, CandidateSourceError, PdfInspectionError) as exc:
         print(f"Papercut: error: {exc}", file=sys.stderr)
         return 2
@@ -74,6 +74,11 @@ def build_parser() -> argparse.ArgumentParser:
     wordlist_parser.add_argument("pdf", type=Path, help="path to the target PDF")
     wordlist_parser.add_argument(
         "wordlist", type=Path, help="path to a UTF-8 wordlist"
+    )
+    wordlist_parser.add_argument(
+        "--mutate",
+        action="store_true",
+        help="test a bounded set of common variants for each candidate",
     )
     wordlist_parser.set_defaults(handler=_wordlist)
     return parser

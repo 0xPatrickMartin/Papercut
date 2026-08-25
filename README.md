@@ -44,6 +44,14 @@ password, and reports attempts, elapsed time, and attempts per second. A
 successful match exits with status `0`, exhaustion with `1`, and an input error
 with `2`.
 
+Use `--mutate` to test a small, deterministic set of common capitalization,
+numeric suffix, year suffix, and character-substitution variants for each
+wordlist entry:
+
+```console
+papercut wordlist path/to/document.pdf path/to/passwords.txt --mutate
+```
+
 Show command help:
 
 ```console
