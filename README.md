@@ -1,8 +1,8 @@
 # Papercut
 
 Papercut is a Python CLI for assessing the password protection used by PDF
-documents. The current milestone inspects a PDF and reports whether it is
-encrypted, along with the available security-handler and encryption details.
+documents. It can inspect PDF encryption settings and test passwords from a
+wordlist.
 
 ## Authorized use only
 
@@ -33,11 +33,21 @@ Inspect a PDF:
 papercut inspect path/to/document.pdf
 ```
 
+Test an encrypted PDF with a UTF-8 wordlist containing one candidate per line:
+
+```console
+papercut wordlist path/to/document.pdf path/to/passwords.txt
+```
+
+Papercut reads the wordlist incrementally, stops at the first matching
+password, and reports attempts, elapsed time, and attempts per second. A
+successful match exits with status `0`, exhaustion with `1`, and an input error
+with `2`.
+
 Show command help:
 
 ```console
 papercut --help
 papercut inspect --help
+papercut wordlist --help
 ```
-
-Password-testing attack modes are not included in this milestone.

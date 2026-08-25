@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 from typing import Sequence
 
+from .attacks import AttackInputError, run_wordlist
+from .candidates import CandidateSourceError
+from .models import AuditResult
 from .pdf import PdfInspectionError, inspect_pdf
 
 
@@ -31,6 +35,27 @@ def _inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_audit_result(result: AuditResult) -> None:
+    status = "SUCCESS" if result.found else "NOT FOUND"
+    print(f"Papercut wordlist: {status}")
+    if result.password is not None:
+        print(f"Password: {result.password}")
+    print(f"Attempted: {result.attempted}")
+    print(f"Elapsed: {result.elapsed:.3f}s")
+    print(f"Rate: {result.rate:.1f} attempts/s")
+
+
+def _wordlist(args: argparse.Namespace) -> int:
+    try:
+        result = run_wordlist(args.pdf, args.wordlist)
+    except (AttackInputError, CandidateSourceError, PdfInspectionError) as exc:
+        print(f"Papercut: error: {exc}", file=sys.stderr)
+        return 2
+
+    _print_audit_result(result)
+    return 0 if result.found else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="papercut",
@@ -42,6 +67,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inspect_parser.add_argument("pdf", type=Path, help="path to the target PDF")
     inspect_parser.set_defaults(handler=_inspect)
+
+    wordlist_parser = subparsers.add_parser(
+        "wordlist", help="test passwords from a wordlist"
+    )
+    wordlist_parser.add_argument("pdf", type=Path, help="path to the target PDF")
+    wordlist_parser.add_argument(
+        "wordlist", type=Path, help="path to a UTF-8 wordlist"
+    )
+    wordlist_parser.set_defaults(handler=_wordlist)
     return parser
 
 
